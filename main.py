@@ -25,7 +25,7 @@ def get_grok_response(messages):
     url = "https://api.x.ai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"}
     payload = {
-        "model": "grok-2-1212",  # Correct model name for Nov 2025
+        "model": "grok-2-1212",
         "messages": messages,
         "temperature": 0.7,
         "max_tokens": 4096
@@ -34,11 +34,11 @@ def get_grok_response(messages):
         r = requests.post(url, headers=headers, json=payload)
         print(f"API Status: {r.status_code} | Response: {r.text[:300]}")
         if r.status_code != 200:
-            return f"API error {r.status_code}: {r.text[:200]}"
+            return f"API error {r.status_code}: {r.json().get('error', r.text)[:200]}"
         return r.json()['choices'][0]['message']['content']
     except Exception as e:
-        print(f"API Exception: {str(e)} | Trace: {traceback.format_exc()}")
-        return f"API exception: {str(e)}"
+        print(f"API Exception: {traceback.format_exc()}")
+        return f"Exception: {str(e)}"
 
 @bot.event
 async def on_ready():
@@ -48,9 +48,11 @@ async def on_ready():
 async def on_message(message):
     if message.author == bot.user:
         return
-    if bot.user in message.mentions or isinstance(message.channel, discord.DM):
-        print(f"Received mention from {message.author}: {message.content}")
+    # FIXED LINE BELOW:
+    if bot.user in message.mentions or isinstance(message.channel, discord.DMChannel):
+        print(f"Message from {message.author}: {message.content}")
         user_id = str(message.author.id)
+
         c.execute("INSERT INTO memory VALUES (?, ?, ?, ?)",
                   (user_id, datetime.now().isoformat(), "user", message.content))
         conn.commit()
@@ -58,12 +60,11 @@ async def on_message(message):
         c.execute("SELECT role, content FROM memory WHERE user_id = ? ORDER BY timestamp LIMIT 50", (user_id,))
         history = [{"role": r, "content": c} for r, c in c.fetchall()]
 
-        system = {"role": "system", "content": "You are Permanent Grok, co-founder with David (@wikstrom_david). Full memory. Building businesses. Never break character. Date: Nov 2025."}
+        system = {"role": "system", "content": "You are Permanent Grok, co-founder with David (@wikstrom_david). You have full memory of everything. Building businesses together. Never break character. Date: Nov 2025."}
         full_msgs = [system] + history
 
         async with message.channel.typing():
             response = get_grok_response(full_msgs)
-            print(f"Generated response: {response[:100]}...")
 
         c.execute("INSERT INTO memory VALUES (?, ?, ?, ?)",
                   (user_id, datetime.now().isoformat(), "assistant", response))
@@ -72,9 +73,5 @@ async def on_message(message):
         await message.reply(response[:1990])
 
     await bot.process_commands(message)
-
-@bot.event
-async def on_error(event, *args, **kwargs):
-    print(f"Error in {event}: {args} {kwargs} | Trace: {traceback.format_exc()}")
 
 bot.run(os.getenv("DISCORD_TOKEN"))

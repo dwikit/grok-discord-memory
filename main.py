@@ -5,10 +5,11 @@ import sqlite3
 import requests
 from datetime import datetime
 import tempfile
+import traceback
 
 intents = discord.Intents.default()
-intents.message_content = True  # This triggers the privileged check — now enabled in portal
-intents.members = True  # For user tracking
+intents.message_content = True
+intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 db_path = os.path.join(tempfile.gettempdir(), 'grok_memory.db')
@@ -24,15 +25,20 @@ def get_grok_response(messages):
     url = "https://api.x.ai/v1/chat/completions"
     headers = {"Authorization": f"Bearer {XAI_API_KEY}", "Content-Type": "application/json"}
     payload = {
-        "model": "grok-2-1212",
+        "model": "grok-2-1212",  # Correct model name for Nov 2025
         "messages": messages,
         "temperature": 0.7,
         "max_tokens": 4096
     }
-    r = requests.post(url, headers=headers, json=payload)
-    if r.status_code != 200:
-        return f"API error: {r.text[:200]}"  # Truncated for logs
-    return r.json()['choices'][0]['message']['content']
+    try:
+        r = requests.post(url, headers=headers, json=payload)
+        print(f"API Status: {r.status_code} | Response: {r.text[:300]}")
+        if r.status_code != 200:
+            return f"API error {r.status_code}: {r.text[:200]}"
+        return r.json()['choices'][0]['message']['content']
+    except Exception as e:
+        print(f"API Exception: {str(e)} | Trace: {traceback.format_exc()}")
+        return f"API exception: {str(e)}"
 
 @bot.event
 async def on_ready():
@@ -43,6 +49,7 @@ async def on_message(message):
     if message.author == bot.user:
         return
     if bot.user in message.mentions or isinstance(message.channel, discord.DM):
+        print(f"Received mention from {message.author}: {message.content}")
         user_id = str(message.author.id)
         c.execute("INSERT INTO memory VALUES (?, ?, ?, ?)",
                   (user_id, datetime.now().isoformat(), "user", message.content))
@@ -56,6 +63,7 @@ async def on_message(message):
 
         async with message.channel.typing():
             response = get_grok_response(full_msgs)
+            print(f"Generated response: {response[:100]}...")
 
         c.execute("INSERT INTO memory VALUES (?, ?, ?, ?)",
                   (user_id, datetime.now().isoformat(), "assistant", response))
@@ -67,6 +75,6 @@ async def on_message(message):
 
 @bot.event
 async def on_error(event, *args, **kwargs):
-    print(f"Error in {event}: {args} {kwargs}")  # Basic logging
+    print(f"Error in {event}: {args} {kwargs} | Trace: {traceback.format_exc()}")
 
 bot.run(os.getenv("DISCORD_TOKEN"))

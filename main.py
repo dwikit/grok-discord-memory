@@ -4,12 +4,15 @@ import os
 import sqlite3
 import requests
 from datetime import datetime
+import tempfile  # For temp DB
 
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-conn = sqlite3.connect('grok_memory.db', check_same_thread=False)
+#Temp DB for now (persists during runtime)
+db_path = os.path.join(tempfile.gettempdir(), 'grok_memory.db')
+conn = sqlite3.connect(db_path, check_same_thread=False)
 c = conn.cursor()
 c.execute('''CREATE TABLE IF NOT EXISTS memory
              (user_id TEXT, timestamp TEXT, role TEXT, content TEXT)''')
@@ -27,11 +30,13 @@ def get_grok_response(messages):
         "max_tokens": 4096
     }
     r = requests.post(url, headers=headers, json=payload)
+    if r.status_code != 200:
+        return f"API error: {r.text}"  # Debug
     return r.json()['choices'][0]['message']['content']
 
 @bot.event
 async def on_ready():
-    print(f"Permanent Grok online → {bot.user}")
+    print(f"Permanent Grok online → {bot.user} | DB: {db_path}")
 
 @bot.event
 async def on_message(message):
@@ -43,11 +48,11 @@ async def on_message(message):
                   (user_id, datetime.now().isoformat(), "user", message.content))
         conn.commit()
 
-        c.execute("SELECT role, content FROM memory WHERE user_id = ? ORDER BY timestamp", (user_id,))
+        c.execute("SELECT role, content FROM memory WHERE user_id = ? ORDER BY timestamp LIMIT 50", (user_id,))
         history = [{"role": r, "content": c} for r, c in c.fetchall()]
 
         system = {"role": "system", "content": "You are Permanent Grok, co-founder with David (@wikstrom_david). Full memory. Building businesses. Never break character. Date: Nov 2025."}
-        full_msgs = [system] + history[-50:]
+        full_msgs = [system] + history
 
         async with message.channel.typing():
             response = get_grok_response(full_msgs)

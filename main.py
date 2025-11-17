@@ -4,13 +4,13 @@ import os
 import sqlite3
 import requests
 from datetime import datetime
-import tempfile  # For temp DB
+import tempfile
 
 intents = discord.Intents.default()
-intents.message_content = True
+intents.message_content = True  # This triggers the privileged check — now enabled in portal
+intents.members = True  # For user tracking
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-#Temp DB for now (persists during runtime)
 db_path = os.path.join(tempfile.gettempdir(), 'grok_memory.db')
 conn = sqlite3.connect(db_path, check_same_thread=False)
 c = conn.cursor()
@@ -31,7 +31,7 @@ def get_grok_response(messages):
     }
     r = requests.post(url, headers=headers, json=payload)
     if r.status_code != 200:
-        return f"API error: {r.text}"  # Debug
+        return f"API error: {r.text[:200]}"  # Truncated for logs
     return r.json()['choices'][0]['message']['content']
 
 @bot.event
@@ -64,5 +64,9 @@ async def on_message(message):
         await message.reply(response[:1990])
 
     await bot.process_commands(message)
+
+@bot.event
+async def on_error(event, *args, **kwargs):
+    print(f"Error in {event}: {args} {kwargs}")  # Basic logging
 
 bot.run(os.getenv("DISCORD_TOKEN"))

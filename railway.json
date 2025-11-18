@@ -1,4 +1,15 @@
 {
-  "build": { "builder": "nixpacks" },
-  "start": "python main.py"
+  "name": "Permanent Grok Bot",
+  "services": {
+    "bot": {
+      "buildCommand": "pip install -r requirements.txt",
+      "startCommand": "python main.py",
+      "envVars": {
+        "DISCORD_TOKEN": { "required": true },
+        "XAI_API_KEY": { "required": true },
+        "UPSTASH_REDIS_URL": { "required": true },
+        "GUILD_ID": { "required": false }
+      }
+    }
+  }
 }
